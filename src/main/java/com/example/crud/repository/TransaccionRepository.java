@@ -12,4 +12,8 @@ import java.util.List;
 
 public interface TransaccionRepository extends JpaRepository<Transaccion, Long> {
     List<Transaccion> findByTarjetaOrigenIdOrTarjetaDestinoId(Long origenId, Long destinoId);
+
+    List<Transaccion> findByTarjetaOrigen(Tarjeta tarjeta);
+
+    List<Transaccion> findByTarjetaDestino(Tarjeta tarjeta);
 }
