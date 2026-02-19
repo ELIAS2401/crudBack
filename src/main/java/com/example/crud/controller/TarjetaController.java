@@ -6,11 +6,13 @@ import com.example.crud.model.Usuario;
 import com.example.crud.repository.UsuarioRepository;
 import com.example.crud.service.TarjetaService;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -98,8 +100,8 @@ public class TarjetaController {
         );
     }
     @DeleteMapping("/{id}")
-    public String eliminarTarjeta(@PathVariable Long id) {
+    public ResponseEntity<Map<String, String>> eliminar(@PathVariable Long id) {
         tarjetaService.eliminar(id);
-        return "Tarjeta eliminada";
+        return ResponseEntity.ok(Map.of("mensaje", "Tarjeta eliminada"));
     }
 }

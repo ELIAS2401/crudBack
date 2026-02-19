@@ -35,10 +35,18 @@ public class UsuarioController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpSession session) {
-        // Invalidamos la sesión actual
         session.invalidate();
         return ResponseEntity.ok().build();
     }
 
+    @GetMapping("/check")
+    public ResponseEntity<Usuario> check(HttpSession session) {
+        Usuario user = (Usuario) session.getAttribute("usuarioActual");
+        if (user != null) {
+            return ResponseEntity.ok(user);
+        } else {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+    }
 
 }

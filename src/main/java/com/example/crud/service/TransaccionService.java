@@ -16,4 +16,8 @@ public interface TransaccionService {
     Optional<Transaccion> obtenerPorId(Long id);
 
     void eliminar(Long id);
+
+    Transaccion transferir(Tarjeta origen, Tarjeta destino, double monto);
+
+    List<Transaccion> listarTodas();
 }

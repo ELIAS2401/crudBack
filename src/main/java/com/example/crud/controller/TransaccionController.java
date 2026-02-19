@@ -1,16 +1,21 @@
 package com.example.crud.controller;
 
+import com.example.crud.dto.TransaccionDTO;
 import com.example.crud.model.Tarjeta;
 import com.example.crud.model.Transaccion;
+import com.example.crud.model.enums.EstadoTransaccion;
+import com.example.crud.model.enums.TipoTransaccion;
 import com.example.crud.repository.TarjetaRepository;
 import com.example.crud.service.TransaccionService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/transacciones")
@@ -19,71 +24,76 @@ public class TransaccionController {
     private final TransaccionService transaccionService;
     private final TarjetaRepository tarjetaRepository;
 
-    // Para pruebas podemos hardcodear tarjetas
-    private final Long TARJETA_ORIGEN_ID = 1L;
-    private final Long TARJETA_DESTINO_ID = 2L;
-
     public TransaccionController(TransaccionService transaccionService, TarjetaRepository tarjetaRepository) {
         this.transaccionService = transaccionService;
         this.tarjetaRepository = tarjetaRepository;
     }
 
-    private Tarjeta getTarjetaOrigen() {
-        return tarjetaRepository.findById(TARJETA_ORIGEN_ID).orElseThrow(() -> new RuntimeException("Tarjeta origen no encontrada"));
-    }
-
-    private Tarjeta getTarjetaDestino() {
-        return tarjetaRepository.findById(TARJETA_DESTINO_ID).orElseThrow(() -> new RuntimeException("Tarjeta destino no encontrada"));
-    }
-
-    // Listar todas las transacciones
     @GetMapping
-    public ResponseEntity<Object> listarTodas() {
+    public ResponseEntity<?> listarTodas() {
         try {
-            Tarjeta origen = getTarjetaOrigen();
-            List<Transaccion> transacciones = transaccionService.listarPorTarjetaOrigen(origen);
-
-            if (transacciones.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.OK)
-                        .body(Map.of("mensaje", "No hay transacciones"));
-            }
-
-            return ResponseEntity.ok(transacciones);
-
+            List<TransaccionDTO> dto = transaccionService.listarTodas().stream()
+                    .map(t -> new TransaccionDTO(
+                            t.getId(),
+                            t.getTarjetaOrigen().getNombre(),
+                            t.getTarjetaDestino().getNombre(),
+                            t.getMonto(),
+                            t.getEstado(),
+                            t.getTipo(),
+                            t.getFecha()
+                    )).collect(Collectors.toList());
+            return ResponseEntity.ok(dto);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
         }
     }
-    // Obtener por id
-    @GetMapping("/{id}")
-    public Transaccion obtenerPorId(@PathVariable Long id) {
-        return transaccionService.obtenerPorId(id)
-                .orElseThrow(() -> new RuntimeException("Transacción no encontrada"));
-    }
 
-    // Crear nueva transacción
-    @PostMapping
-    public Transaccion crear(@RequestBody Transaccion transaccion) {
-        transaccion.setTarjetaOrigen(getTarjetaOrigen());
-        transaccion.setTarjetaDestino(getTarjetaDestino());
-        transaccion.setFecha(LocalDateTime.now());
-        return transaccionService.crear(transaccion);
-    }
+    // Transferencia
+    @PostMapping("/transferir")
+    public ResponseEntity<?> transferir(@RequestBody Map<String, Object> body) {
+        try {
+            Long origenId = Long.valueOf(body.get("origenId").toString());
+            Long destinoId = Long.valueOf(body.get("destino").toString());
+            Double monto = Double.valueOf(body.get("monto").toString());
 
-    // Editar transacción
-    @PutMapping("/{id}")
-    public Transaccion editar(@PathVariable Long id, @RequestBody Transaccion transaccion) {
-        transaccion.setId(id);
-        transaccion.setTarjetaOrigen(getTarjetaOrigen());
-        transaccion.setTarjetaDestino(getTarjetaDestino());
-        return transaccionService.crear(transaccion);
-    }
+            Tarjeta origen = tarjetaRepository.findById(origenId)
+                    .orElseThrow(() -> new RuntimeException("Tarjeta origen no encontrada"));
+            Tarjeta destino = tarjetaRepository.findById(destinoId)
+                    .orElseThrow(() -> new RuntimeException("Tarjeta destino no encontrada"));
 
-    // Eliminar transacción
-    @DeleteMapping("/{id}")
-    public String eliminar(@PathVariable Long id) {
-        transaccionService.eliminar(id);
-        return "Transacción eliminada";
+            if (origen.getSaldo().compareTo(BigDecimal.valueOf(monto)) < 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("error", "Saldo insuficiente"));
+            }
+
+            origen.setSaldo(origen.getSaldo().subtract(BigDecimal.valueOf(monto)));
+            destino.setSaldo(destino.getSaldo().add(BigDecimal.valueOf(monto)));
+
+            tarjetaRepository.save(origen);
+            tarjetaRepository.save(destino);
+
+            // Guardar la transacción
+            Transaccion transaccion = new Transaccion();
+            transaccion.setTarjetaOrigen(origen);
+            transaccion.setTarjetaDestino(destino);
+            transaccion.setMonto(BigDecimal.valueOf(monto));
+            transaccion.setFecha(LocalDateTime.now());
+
+            // Inicializamos campos obligatorios
+            transaccion.setEstado(EstadoTransaccion.PENDIENTE); // o COMPLETADA si ya pasó
+            transaccion.setTipo(TipoTransaccion.TRANSFERENCIA);
+
+            transaccionService.crear(transaccion);
+
+            return ResponseEntity.ok(Map.of(
+                    "mensaje", "Transferencia realizada",
+                    "transaccionId", transaccion.getId()
+            ));
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 }
